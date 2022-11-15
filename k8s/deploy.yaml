@@ -1,0 +1,36 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: golang-dummy
+  labels:
+    app: golang-dummy
+    service: golang-dummy
+spec:
+  ports:
+  - port: 8080
+    name: http
+  selector:
+    app: golang-dummy
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: golang-dummy
+  labels:
+    app: golang-dummy
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: golang-dummy
+  template:
+    metadata:
+      labels:
+        app: golang-dummy
+    spec:
+      containers:
+      - name: server
+        image: docker.io/sreeharikmarar/golang-dummy:0.0.1
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8080
