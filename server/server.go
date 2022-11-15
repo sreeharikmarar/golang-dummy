@@ -15,7 +15,8 @@ func PingHandler(w http.ResponseWriter, r *http.Request) {
 
 func HelloHandler(w http.ResponseWriter, r *http.Request) {
 	log.Print("hello request received")
-	w.Write([]byte("Hello from golang-dummy"))
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.Write([]byte(`{"hello": "world"}`))
 }
 
 func DelayHandler(w http.ResponseWriter, r *http.Request) {
