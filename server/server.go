@@ -10,20 +10,22 @@ import (
 )
 
 func PingHandler(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("pong"))
 }
 
 func HelloHandler(w http.ResponseWriter, r *http.Request) {
 	log.Print("hello request received")
-	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("Hello from golang-dummy"))
 }
 
 func DelayHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	log.Print("delay request received for ", vars["time_ms"], "ms")
-	time_ms, _ := strconv.Atoi(vars["time_ms"])
+	time_ms, err := strconv.Atoi(vars["time_ms"])
+	if err != nil {
+		log.Print("invalid time")
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
 	time.Sleep(time.Duration(time_ms) * time.Millisecond)
-	w.WriteHeader(http.StatusOK)
 }
