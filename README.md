@@ -1,10 +1,10 @@
 # golang-dummy
 
-## start server
+## Start server
 
 ```
-$: go install golang-dummy
-$: PORT=8080 ./golang-dummy start
+$: go install github.com/sreeharikmarar/golang-dummy@latest
+$: PORT=8080 golang-dummy start
 ```
 
 ## Delay request
