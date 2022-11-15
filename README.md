@@ -14,7 +14,7 @@ $: PORT=8080 golang-dummy start
 
 > GET /delay/3000 HTTP/1.1
 > User-Agent: curl/7.35.0
-> Host: golang-dummy:8080
+> Host: localhost:8080
 > Accept: */*
 >
 < HTTP/1.1 200 OK
