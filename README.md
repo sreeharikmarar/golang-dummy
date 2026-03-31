@@ -1,83 +1,88 @@
-# Golang dummy
+# golang-dummy
 
-A Go project that serves as a dummy example.
+A lightweight Go HTTP test server for verifying Kubernetes networking, service mesh configurations, HTTP client behavior, and load balancing.
 
+## Endpoints
 
-## Build the Application
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/ping` | Returns `pong` — simple health check |
+| GET | `/health` | JSON health status with timestamp and uptime — for K8s probes |
+| GET | `/hello` | Returns `{"hello": "world"}` |
+| GET | `/headers` | Echoes request headers as JSON — for proxy/mesh header inspection |
+| GET | `/status/{code}` | Returns the specified HTTP status code (100-599) |
+| POST | `/echo` | Echoes request body back with same Content-Type (max 1MB) |
+| GET | `/env` | Returns curated environment variables as JSON (POD_NAME, POD_IP, NODE_NAME, etc.) |
+| GET | `/info` | Server info: hostname, IPs, Go version, uptime — for load balancing verification |
+| GET | `/delay/{ms}` | Responds after the specified delay in milliseconds (max 30s) |
 
-to build the application, run:
+## Quick Start
 
-```sh
-make build
-```
-
-### Clean Build Artifcats
-
-To clean build artifacts, run:
-
-```sh
-make clean
-```
-
-### Run Tests
-
-To run tests, use:
+### Run locally
 
 ```sh
-make test
+make run
+# or
+PORT=8080 go run main.go start
 ```
 
-### Install Dependencies
-
-If you need to install project dependencies, use:
+### Test endpoints
 
 ```sh
-make get
+curl localhost:8080/ping
+curl localhost:8080/health
+curl localhost:8080/headers
+curl localhost:8080/status/503
+curl localhost:8080/info
+curl localhost:8080/delay/500
+curl -X POST -H "Content-Type: application/json" -d '{"test": true}' localhost:8080/echo
 ```
-### Build and Package as Binary
 
-To build and package the application as a binary (Linux, AMD64 by default), run:
+## Kind Cluster Setup
+
+Deploy to a local Kind cluster with a single command:
 
 ```sh
-make package
+./setup.sh
 ```
 
+This will:
+1. Check prerequisites (docker, kind, kubectl)
+2. Create a 3-node Kind cluster (1 control-plane + 2 workers)
+3. Build and load the Docker image
+4. Deploy with 2 replicas
+5. Run smoke tests against all endpoints
+6. Print connection info
 
-## Docker Build
+Access the server at `http://localhost:30080`.
 
-To build a Docker image from the project, use:
+### Teardown
 
 ```sh
-make docker-build
+./setup.sh teardown
 ```
 
-To tag the Docker image and push it to a Docker registry, you need to run:
+## Build
 
 ```sh
-make docker-push
-```
-Note: Before using the docker-push target, replace your-docker-repo with your actual Docker repository.
-
-## Run the Application
-### Start server
-
-```
-$: go install github.com/sreeharikmarar/golang-dummy@latest
-$: PORT=8080 golang-dummy start
+make build          # Build binary
+make docker-build   # Build Docker image
+make test           # Run tests
+make lint           # Run golangci-lint
 ```
 
-### Delay request
+## Use Cases
 
-```
-/ # curl -v localhost:8080/delay/3000
+- **Load balancing verification** — hit `/info` repeatedly to see different pod hostnames
+- **Service mesh testing** — inspect injected headers via `/headers`
+- **Error handling** — use `/status/{code}` to simulate any HTTP error
+- **Latency testing** — use `/delay/{ms}` to simulate slow upstreams
+- **K8s config verification** — check downward API values via `/env`
+- **Probe configuration** — use `/health` for liveness and readiness probes
+- **Payload testing** — send arbitrary payloads to `/echo`
 
-> GET /delay/3000 HTTP/1.1
-> User-Agent: curl/7.35.0
-> Host: localhost:8080
-> Accept: */*
->
-< HTTP/1.1 200 OK
-< Date: Tue, 15 Nov 2022 11:33:52 GMT
-< Content-Length: 0
-<
-```
+## Configuration
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `PORT` | `8080` | Server listen port |

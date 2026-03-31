@@ -4,10 +4,12 @@ metadata:
   name: golang-dummy
   labels:
     app: golang-dummy
-    service: golang-dummy
 spec:
+  type: NodePort
   ports:
   - port: 8080
+    targetPort: 8080
+    nodePort: 30080
     name: http
   selector:
     app: golang-dummy
@@ -19,7 +21,7 @@ metadata:
   labels:
     app: golang-dummy
 spec:
-  replicas: 1
+  replicas: 2
   selector:
     matchLabels:
       app: golang-dummy
@@ -28,9 +30,59 @@ spec:
       labels:
         app: golang-dummy
     spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        fsGroup: 10001
       containers:
       - name: server
-        image: docker.io/sreeharikmarar/golang-dummy:0.0.1
-        imagePullPolicy: IfNotPresent
+        image: golang-dummy:latest
+        imagePullPolicy: Never
         ports:
         - containerPort: 8080
+        env:
+        - name: PORT
+          value: "8080"
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+          limits:
+            cpu: 200m
+            memory: 128Mi
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 3
+          periodSeconds: 5
+          failureThreshold: 3
+        securityContext:
+          readOnlyRootFilesystem: true
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL

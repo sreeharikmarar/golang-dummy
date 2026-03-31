@@ -11,18 +11,49 @@ import (
 	"time"
 
 	"github.com/spf13/viper"
-	"github.com/urfave/negroni"
 )
 
+type responseWriter struct {
+	http.ResponseWriter
+	status int
+}
+
+func (rw *responseWriter) WriteHeader(code int) {
+	rw.status = code
+	rw.ResponseWriter.WriteHeader(code)
+}
+
+func loggingMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		rw := &responseWriter{ResponseWriter: w, status: http.StatusOK}
+		next.ServeHTTP(rw, r)
+		log.Printf("method=%s path=%s status=%d duration=%s", r.Method, r.URL.Path, rw.status, time.Since(start))
+	})
+}
+
+func recoveryMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer func() {
+			if err := recover(); err != nil {
+				log.Printf("panic recovered: %v", err)
+				http.Error(w, `{"error": "internal server error"}`, http.StatusInternalServerError)
+			}
+		}()
+		next.ServeHTTP(w, r)
+	})
+}
+
 func Start() {
-	n := negroni.New(negroni.NewRecovery())
+	startTime = time.Now()
 
-	router := Router()
-	n.UseHandler(router)
+	handler := recoveryMiddleware(loggingMiddleware(Router()))
 
+	port := strconv.Itoa(viper.GetInt("port"))
 	server := &http.Server{
-		Addr:    ":" + strconv.Itoa(viper.GetInt("port")),
-		Handler: router,
+		Addr:              ":" + port,
+		Handler:           handler,
+		ReadHeaderTimeout: 10 * time.Second,
 	}
 
 	done := make(chan os.Signal, 1)
@@ -33,20 +64,16 @@ func Start() {
 			log.Fatalf("listen: %s\n", err)
 		}
 	}()
-	log.Print("Server Started")
+	log.Printf("Server started on port %s", port)
 
 	<-done
-	log.Print("Server Stopped")
+	log.Print("Server stopped")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer func() {
-		// extra handling here
-		cancel()
-	}()
+	defer cancel()
 
 	if err := server.Shutdown(ctx); err != nil {
-		log.Fatalf("Server Shutdown Failed:%+v", err)
+		log.Fatalf("Server shutdown failed: %+v", err)
 	}
-	log.Print("Server Exited Properly")
-
+	log.Print("Server exited properly")
 }

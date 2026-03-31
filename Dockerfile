@@ -1,18 +1,15 @@
-FROM golang:1.18-alpine 
+FROM golang:1.25-alpine AS builder
 WORKDIR /src
-ENV GO111MODULE=on
-# Use the official golang module proxy
-ENV GOPROXY=http://proxy.golang.org
-# COPY the go.mod and go.sum files to the workspace
-COPY go.mod .
-COPY go.sum .
-# Get dependencies. Will be cached as long as go.mod and go.sum do not change
+COPY go.mod go.sum ./
 RUN go mod download
-# COPY the source code as the last step
 COPY . .
-# Build the binaries
-RUN CGO_ENABLED=0 go build -o /usr/local/golang-dummy main.go
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /app main.go
 
+FROM alpine:3.21
+RUN addgroup -S appgroup && adduser -u 10001 -S appuser -G appgroup
+COPY --from=builder /app /app
+USER appuser
 ENV PORT=8080
-# Start the main process.
-CMD ["/usr/local/golang-dummy", "start"]
+EXPOSE 8080
+ENTRYPOINT ["/app"]
+CMD ["start"]
