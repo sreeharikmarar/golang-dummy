@@ -45,22 +45,9 @@ func loggingMiddleware(next http.Handler) http.Handler {
 }
 
 func deploymentHeaderMiddleware(next http.Handler) http.Handler {
-	version := os.Getenv("APP_VERSION")
-	if version == "" {
-		version = buildVersion
-	}
-	color := os.Getenv("APP_COLOR")
-	track := os.Getenv("APP_TRACK")
-
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("X-App-Version", version)
+		w.Header().Set("X-App-Version", buildVersion)
 		w.Header().Set("X-Git-Commit", buildCommit)
-		if color != "" {
-			w.Header().Set("X-App-Color", color)
-		}
-		if track != "" {
-			w.Header().Set("X-App-Track", track)
-		}
 		next.ServeHTTP(w, r)
 	})
 }

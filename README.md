@@ -13,7 +13,7 @@ A lightweight Go HTTP test server for verifying Kubernetes networking, service m
 | GET | `/status/{code}` | Returns the specified HTTP status code (100-599) |
 | POST | `/echo` | Echoes request body back with same Content-Type (max 1MB) |
 | GET | `/env` | Returns curated environment variables as JSON (POD_NAME, POD_IP, NODE_NAME, etc.) |
-| GET | `/info` | Server info: hostname, IPs, version, git commit, build time, color, track — for deployment verification |
+| GET | `/info` | Server info: hostname, IPs, version, git commit, build time — for deployment verification |
 | GET | `/delay/{ms}` | Responds after the specified delay in milliseconds (max 30s) |
 
 ## Quick Start
@@ -74,18 +74,23 @@ make lint                    # Run golangci-lint
 
 ## Deployment Strategy Support
 
-The service is designed to work with any deployment strategy (Argo Rollouts, Istio, blue-green, canary). The platform manages rollout infrastructure — the app just exposes its identity.
+The service is strategy-agnostic. Each build gets a unique version from `git describe` — that's the only identity needed. The platform (Argo Rollouts, Istio, etc.) handles the rollout strategy; the app just reports what version it is.
 
 ### Response Headers
 
-Every response includes deployment identity headers:
+Every response includes:
 
 | Header | Source | Description |
 |--------|--------|-------------|
-| `X-App-Version` | `APP_VERSION` env or build-time version | Identifies the app version |
-| `X-Git-Commit` | Build-time ldflags | Git SHA of the build |
-| `X-App-Color` | `APP_COLOR` env (if set) | Blue-green deployment color |
-| `X-App-Track` | `APP_TRACK` env (if set) | Canary deployment track |
+| `X-App-Version` | Build-time `git describe` | Version tag or SHA (e.g., `v0.1.0-3-gabc123`) |
+| `X-Git-Commit` | Build-time `git rev-parse` | Short git commit SHA |
+
+### Build-Time Version Info
+
+Version, git commit SHA, and build timestamp are resolved inside the Dockerfile via `git describe`, `git rev-parse`, and `date`. No external build args required. Each build gets a unique, immutable version — the only identity needed to distinguish pods during any rollout strategy.
+
+- With a git tag: version = `v0.1.0` (on tag) or `v0.1.0-3-gabc123` (3 commits after tag)
+- Without tags: version = short commit SHA (e.g., `cc64394`)
 
 ### Verifying Traffic Distribution
 
@@ -93,39 +98,29 @@ After deploying with a rollout strategy, verify which versions are serving traff
 
 ```sh
 # Check response headers
-curl -v localhost:30080/info 2>&1 | grep -i "x-app-"
+curl -sI localhost:30080/ping | grep X-App
 
-# Check /info JSON (includes version, git_commit, build_time, color, track)
-curl -s localhost:30080/info | jq '{version, git_commit, color, track, hostname}'
+# Check /info JSON
+curl -s localhost:30080/info | jq '{version, git_commit, build_time, hostname}'
 
-# Run automated distribution check
+# Run automated distribution check (requires jq)
 ./setup.sh verify 20    # or: make verify
 ```
 
-The verify command curls `/info` N times and shows a distribution summary:
+Example verify output during a canary rollout:
 ```
   Versions:
-    v1              15/20 (75%)
-    v2              5/20 (25%)
-  Tracks:
-    stable          15/20 (75%)
-    canary          5/20 (25%)
+    v0.1.0                    15/20 (75%)
+    v0.1.0-3-gabc123          5/20 (25%)
+  Hosts:
+    pod-abc                   10/20 (50%)
+    pod-def                   5/20 (25%)
+    pod-ghi                   5/20 (25%)
 ```
-
-### Build-Time Version Info
-
-Version, git commit SHA, and build timestamp are injected at build time via ldflags. The platform CI/CD pipeline can set `VERSION` during the build:
-
-```sh
-make VERSION=v1.2.0 docker-build
-```
-
-At runtime, the platform can override the version via `APP_VERSION` env var and set `APP_COLOR`/`APP_TRACK` as needed for the active rollout strategy.
 
 ## Use Cases
 
-- **Canary verification** — check `X-App-Version`/`X-App-Track` headers to verify traffic split
-- **Blue-green verification** — check `X-App-Color` header to confirm active deployment
+- **Canary / blue-green verification** — check `X-App-Version` header to verify traffic split between builds
 - **Load balancing verification** — hit `/info` repeatedly to see different pod hostnames
 - **Service mesh testing** — inspect injected headers via `/headers`
 - **Error handling** — use `/status/{code}` to simulate any HTTP error
@@ -139,6 +134,3 @@ At runtime, the platform can override the version via `APP_VERSION` env var and 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `PORT` | `8080` | Server listen port |
-| `APP_VERSION` | build-time version | Overrides the version reported in headers and `/info` |
-| `APP_COLOR` | _(unset)_ | Blue-green color identifier (e.g., `blue`, `green`) |
-| `APP_TRACK` | _(unset)_ | Canary track identifier (e.g., `stable`, `canary`) |

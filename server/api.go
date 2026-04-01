@@ -16,12 +16,6 @@ import (
 
 var startTime time.Time
 
-func getEnvDefault(key, fallback string) string {
-	if v, ok := os.LookupEnv(key); ok && v != "" {
-		return v
-	}
-	return fallback
-}
 
 func pingHandler(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("pong"))
@@ -130,11 +124,9 @@ func infoHandler(w http.ResponseWriter, r *http.Request) {
 		"arch":       runtime.GOARCH,
 		"num_cpus":   runtime.NumCPU(),
 		"uptime":     time.Since(startTime).String(),
-		"version":    getEnvDefault("APP_VERSION", buildVersion),
+		"version":    buildVersion,
 		"git_commit": buildCommit,
 		"build_time": buildTime,
-		"color":      os.Getenv("APP_COLOR"),
-		"track":      os.Getenv("APP_TRACK"),
 	})
 	log.Printf("info request: hostname=%s", hostname)
 }
