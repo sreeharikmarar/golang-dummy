@@ -130,6 +130,81 @@ print_info() {
     echo ""
 }
 
+verify() {
+    local count="${1:-20}"
+    local base_url="http://localhost:30080"
+
+    if ! command -v jq &>/dev/null; then
+        fail "jq is required for verify (brew install jq)"
+    fi
+
+    log "Verifying traffic distribution (${count} requests)..."
+    echo ""
+
+    declare -A version_counts=()
+    declare -A color_counts=()
+    declare -A track_counts=()
+    declare -A host_counts=()
+    local has_colors=0
+    local has_tracks=0
+
+    for i in $(seq 1 "$count"); do
+        local response headers
+        response=$(curl -sf "$base_url/info") || { warn "Request $i failed"; continue; }
+        headers=$(curl -sf -o /dev/null -D - "$base_url/info" 2>/dev/null) || true
+
+        local ver col trk host
+        ver=$(echo "$response" | jq -r '.version // "unknown"')
+        col=$(echo "$response" | jq -r 'if .color == "" then empty else .color end')
+        trk=$(echo "$response" | jq -r 'if .track == "" then empty else .track end')
+        host=$(echo "$response" | jq -r '.hostname // "unknown"')
+
+        local hdr_ver hdr_col hdr_trk
+        hdr_ver=$(echo "$headers" | grep -i "^X-App-Version:" | awk '{print $2}' | tr -d '\r') || true
+        hdr_col=$(echo "$headers" | grep -i "^X-App-Color:" | awk '{print $2}' | tr -d '\r') || true
+        hdr_trk=$(echo "$headers" | grep -i "^X-App-Track:" | awk '{print $2}' | tr -d '\r') || true
+
+        printf "  [%2d] host=%-30s version=%-10s color=%-10s track=%-10s (hdr: v=%s c=%s t=%s)\n" \
+            "$i" "$host" "$ver" "${col:-—}" "${trk:-—}" "${hdr_ver:-—}" "${hdr_col:-—}" "${hdr_trk:-—}"
+
+        version_counts["$ver"]=$(( ${version_counts["$ver"]:-0} + 1 ))
+        if [ -n "$col" ]; then
+            color_counts["$col"]=$(( ${color_counts["$col"]:-0} + 1 ))
+            has_colors=1
+        fi
+        if [ -n "$trk" ]; then
+            track_counts["$trk"]=$(( ${track_counts["$trk"]:-0} + 1 ))
+            has_tracks=1
+        fi
+        host_counts["$host"]=$(( ${host_counts["$host"]:-0} + 1 ))
+    done
+
+    echo ""
+    log "Distribution Summary (${count} requests):"
+    echo ""
+    echo "  Versions:"
+    for v in "${!version_counts[@]}"; do
+        printf "    %-15s %d/%d (%.0f%%)\n" "$v" "${version_counts[$v]}" "$count" "$(echo "scale=0; ${version_counts[$v]} * 100 / $count" | bc)"
+    done
+    if [ "$has_colors" -eq 1 ]; then
+        echo "  Colors:"
+        for c in "${!color_counts[@]}"; do
+            printf "    %-15s %d/%d (%.0f%%)\n" "$c" "${color_counts[$c]}" "$count" "$(echo "scale=0; ${color_counts[$c]} * 100 / $count" | bc)"
+        done
+    fi
+    if [ "$has_tracks" -eq 1 ]; then
+        echo "  Tracks:"
+        for t in "${!track_counts[@]}"; do
+            printf "    %-15s %d/%d (%.0f%%)\n" "$t" "${track_counts[$t]}" "$count" "$(echo "scale=0; ${track_counts[$t]} * 100 / $count" | bc)"
+        done
+    fi
+    echo "  Hosts:"
+    for h in "${!host_counts[@]}"; do
+        printf "    %-15s %d/%d (%.0f%%)\n" "$h" "${host_counts[$h]}" "$count" "$(echo "scale=0; ${host_counts[$h]} * 100 / $count" | bc)"
+    done
+    echo ""
+}
+
 teardown() {
     log "Deleting Kind cluster '${CLUSTER_NAME}'..."
     kind delete cluster --name "$CLUSTER_NAME"
@@ -145,11 +220,14 @@ case "${1:-setup}" in
         smoke_test
         print_info
         ;;
+    verify)
+        verify "${2:-20}"
+        ;;
     teardown)
         teardown
         ;;
     *)
-        echo "Usage: $0 {setup|teardown}"
+        echo "Usage: $0 {setup|verify [count]|teardown}"
         exit 1
         ;;
 esac

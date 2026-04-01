@@ -13,6 +13,18 @@ import (
 	"github.com/spf13/viper"
 )
 
+var (
+	buildVersion = "dev"
+	buildCommit  = "unknown"
+	buildTime    = "unknown"
+)
+
+func SetBuildInfo(version, commit, time string) {
+	buildVersion = version
+	buildCommit = commit
+	buildTime = time
+}
+
 type responseWriter struct {
 	http.ResponseWriter
 	status int
@@ -32,6 +44,27 @@ func loggingMiddleware(next http.Handler) http.Handler {
 	})
 }
 
+func deploymentHeaderMiddleware(next http.Handler) http.Handler {
+	version := os.Getenv("APP_VERSION")
+	if version == "" {
+		version = buildVersion
+	}
+	color := os.Getenv("APP_COLOR")
+	track := os.Getenv("APP_TRACK")
+
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-App-Version", version)
+		w.Header().Set("X-Git-Commit", buildCommit)
+		if color != "" {
+			w.Header().Set("X-App-Color", color)
+		}
+		if track != "" {
+			w.Header().Set("X-App-Track", track)
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 func recoveryMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer func() {
@@ -47,7 +80,7 @@ func recoveryMiddleware(next http.Handler) http.Handler {
 func Start() {
 	startTime = time.Now()
 
-	handler := recoveryMiddleware(loggingMiddleware(Router()))
+	handler := recoveryMiddleware(loggingMiddleware(deploymentHeaderMiddleware(Router())))
 
 	port := strconv.Itoa(viper.GetInt("port"))
 	server := &http.Server{
